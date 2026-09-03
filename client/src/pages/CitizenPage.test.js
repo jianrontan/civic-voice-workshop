@@ -31,7 +31,7 @@ describe("citizen feedback character limit", () => {
       createElement(CitizenPage, { user: { nric: "S0000001A", name: "Aisha Lim" } }),
     );
 
-    expect(markup).toContain(`maxlength="${FEEDBACK_CHARACTER_LIMIT}"`);
+    expect(markup).toContain(`maxLength="${FEEDBACK_CHARACTER_LIMIT}"`);
     expect(markup).toContain(`0/${FEEDBACK_CHARACTER_LIMIT} characters`);
   });
 });

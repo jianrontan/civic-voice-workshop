@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { login } from "../api";
 
+export function getLoginErrorMessage(error) {
+  if (error.status === 429) {
+    return "Too many unsuccessful sign-in attempts. Please wait a few minutes and try again.";
+  }
+  return error.message;
+}
+
 export function LoginPage({ onLogin }) {
   const [role, setRole] = useState("citizen");
   const [nric, setNric] = useState("");
@@ -16,7 +23,7 @@ export function LoginPage({ onLogin }) {
       const session = await login({ nric, password, role });
       onLogin(session);
     } catch (requestError) {
-      setError(requestError.message);
+      setError(getLoginErrorMessage(requestError));
     } finally {
       setBusy(false);
     }

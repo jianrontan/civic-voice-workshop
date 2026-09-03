@@ -6,10 +6,10 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { createDb } from "./lib/db.js";
 
-async function testApp() {
+async function testApp(options = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "civic-voice-"));
   const db = await createDb(path.join(directory, "db.json"));
-  return createApp({ db });
+  return createApp({ db, ...options });
 }
 
 describe("CivicVoice baseline API", () => {
@@ -61,6 +61,53 @@ describe("CivicVoice baseline API", () => {
       nric: "S0000001A", password: "wrong-password", role: "citizen",
     });
     expect(response.status).toBe(401);
+  });
+
+  it("rate-limits repeated failed sign-ins without blocking a valid sign-in", async () => {
+    const app = await testApp({ maxFailedLoginAttempts: 2 });
+    const invalidCredentials = { nric: "S0000001A", password: "wrong-password", role: "citizen" };
+
+    await request(app).post("/api/login").send(invalidCredentials).expect(401);
+    await request(app).post("/api/login").send(invalidCredentials).expect(401);
+    const limited = await request(app).post("/api/login").send(invalidCredentials);
+
+    expect(limited.status).toBe(429);
+    expect(limited.headers["retry-after"]).toBeDefined();
+    expect(limited.body.error).toMatch(/too many unsuccessful/i);
+
+    const successfulLogin = await request(app).post("/api/login").send({
+      nric: "S0000001A", password: "citizen123", role: "citizen",
+    });
+    expect(successfulLogin.status).toBe(200);
+
+    await request(app).post("/api/login").send(invalidCredentials).expect(401);
+  });
+
+  it("expires failed attempts after the rate-limit window", async () => {
+    let currentTime = Date.parse("2026-09-03T00:00:00.000Z");
+    const app = await testApp({
+      maxFailedLoginAttempts: 1,
+      loginRateLimitWindowMs: 1_000,
+      now: () => currentTime,
+    });
+    const invalidCredentials = { nric: "S0000001A", password: "wrong-password", role: "citizen" };
+
+    await request(app).post("/api/login").send(invalidCredentials).expect(401);
+    await request(app).post("/api/login").send(invalidCredentials).expect(429);
+
+    currentTime += 1_001;
+    await request(app).post("/api/login").send(invalidCredentials).expect(401);
+  });
+
+  it("bounds tracked failed identifiers by evicting the oldest entry", async () => {
+    const app = await testApp({ maxFailedLoginAttempts: 1, maxLoginAttemptEntries: 2 });
+    const invalidCredentials = (nric) => ({ nric, password: "wrong-password", role: "citizen" });
+
+    await request(app).post("/api/login").send(invalidCredentials("S0000101A")).expect(401);
+    await request(app).post("/api/login").send(invalidCredentials("S0000102B")).expect(401);
+    await request(app).post("/api/login").send(invalidCredentials("S0000103C")).expect(401);
+
+    await request(app).post("/api/login").send(invalidCredentials("S0000101A")).expect(401);
   });
 
   it("accepts feedback", async () => {
