@@ -30,6 +30,7 @@ label { display: grid; gap: 8px; margin: 15px 0; color: #38434a; font-size: 14px
 input, textarea { width: 100%; border: 1px solid #d5d2cb; border-radius: 8px; background: white; padding: 13px 14px; outline: none; }
 input:focus, textarea:focus { border-color: #b2252a; box-shadow: 0 0 0 3px rgba(178,37,42,.1); }
 textarea { resize: vertical; line-height: 1.6; }
+.character-count { color: #69747b; font-size: 13px; text-align: right; }
 .primary-button { border: 0; background: #b2252a; color: white; border-radius: 8px; padding: 13px 18px; font-weight: 700; min-width: 145px; }
 .primary-button:hover { background: #8f1b20; }
 .primary-button:disabled { opacity: .65; cursor: wait; }
