@@ -47,6 +47,6 @@ export function login(credentials) {
 export function submitFeedback(feedback) {
   return api("/api/feedback", { method: "POST", body: JSON.stringify(feedback) });
 }
-export function getFeedback(user) {
-  return api("/api/feedback", { headers: { "x-user-role": user.role } });
+export function getFeedback(token) {
+  return api("/api/feedback", { headers: { Authorization: `Bearer ${token}` } });
 }
