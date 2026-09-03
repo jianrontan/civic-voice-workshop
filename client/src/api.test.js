@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../server/app.js";
 import { createDb } from "../../server/lib/db.js";
 import { login } from "./api";
+import { checkHealth } from "./api";
 import { getLoginErrorMessage } from "./pages/LoginPage";
 
 const originalFetch = globalThis.fetch;
@@ -75,5 +76,20 @@ describe("API error handling", () => {
 
     expect(error).toMatchObject({ status: 429, code: "RATE_LIMITED" });
     expect(getLoginErrorMessage(error)).toBe("Too many unsuccessful sign-in attempts. Please wait a few minutes and try again.");
+  });
+});
+
+describe("checkHealth", () => {
+  it("reports the API as available only for a successful health response", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    await expect(checkHealth()).resolves.toBe(true);
+  });
+
+  it("reports unavailable when the API fails or cannot be reached", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, json: async () => ({ ok: false }) });
+    await expect(checkHealth()).resolves.toBe(false);
+
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("API offline"));
+    await expect(checkHealth()).resolves.toBe(false);
   });
 });

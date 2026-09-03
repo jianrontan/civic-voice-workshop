@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { login } from "../api";
+import { useEffect, useState } from "react";
+import { checkHealth, login } from "../api";
+import { startHealthPolling } from "../health";
 
 export function getLoginErrorMessage(error) {
   if (error.status === 429) {
@@ -14,6 +15,11 @@ export function LoginPage({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [health, setHealth] = useState("checking");
+
+  useEffect(() => {
+    return startHealthPolling(checkHealth, setHealth);
+  }, []);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -45,6 +51,11 @@ export function LoginPage({ onLogin }) {
           <div className="eyebrow">Secure sign in</div>
           <h2>Welcome to CivicVoice</h2>
           <p className="muted">Use your NRIC and password to continue.</p>
+          <p className={`health-status health-status--${health}`} role="status" aria-live="polite">
+            {health === "checking" && "Checking local API connection…"}
+            {health === "available" && "Local API is available."}
+            {health === "unavailable" && "Local API is unavailable. Retrying automatically…"}
+          </p>
           <div className="role-switch" role="tablist" aria-label="Sign-in mode">
             <button className={role === "citizen" ? "active" : ""} onClick={() => setRole("citizen")} type="button">Public</button>
             <button className={role === "admin" ? "active" : ""} onClick={() => setRole("admin")} type="button">Admin</button>
