@@ -5,6 +5,27 @@ import { createDb } from "./lib/db.js";
 import { verifyPassword } from "./lib/passwords.js";
 import { sendError } from "./lib/errors.js";
 
+export function filterFeedback(feedback, { category, status } = {}) {
+  return feedback.filter((item) => (
+    (!category || item.category === category)
+    && (!status || item.status === status)
+  ));
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  const safeText = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return `"${safeText.replaceAll("\"", "\"\"")}"`;
+}
+
+export function feedbackToCsv(feedback) {
+  const rows = [
+    ["Reference", "Name", "Category", "Status", "Submitted", "Feedback"],
+    ...feedback.map((item) => [item.id, item.name, item.category, item.status, item.createdAt, item.message]),
+  ];
+  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
 export const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 export const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 export const MAX_LOGIN_ATTEMPT_ENTRIES = 1_000;
@@ -84,8 +105,17 @@ export async function createApp(options = {}) {
     next();
   }
 
-  app.get("/api/feedback", requireAdminSession, (_req, res) => {
-    return res.json({ feedback: db.data.feedback });
+  function getVisibleFeedback(req) {
+    return filterFeedback(db.data.feedback, req.query);
+  }
+
+  app.get("/api/feedback/export", requireAdminSession, (req, res) => {
+    res.attachment("civicvoice-feedback.csv");
+    return res.type("text/csv").send(feedbackToCsv(getVisibleFeedback(req)));
+  });
+
+  app.get("/api/feedback", requireAdminSession, (req, res) => {
+    return res.json({ feedback: getVisibleFeedback(req) });
   });
 
   app.post("/api/feedback", async (req, res, next) => {

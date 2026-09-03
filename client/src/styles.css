@@ -55,6 +55,8 @@ textarea { resize: vertical; line-height: 1.6; }
 .admin-shell { max-width: 1050px; }
 .list-header { display: flex; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid #eceae4; }
 .list-header span { color: #69747b; font-size: 14px; }
+.secondary-button { border: 1px solid #1f596a; border-radius: 8px; padding: 8px 12px; background: white; color: #1f596a; cursor: pointer; }
+.secondary-button:disabled { cursor: wait; opacity: .7; }
 .feedback-row { display: flex; justify-content: space-between; gap: 24px; padding: 20px 0; border-bottom: 1px solid #eceae4; }
 .feedback-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .feedback-row p { margin: 8px 0 0; line-height: 1.55; }

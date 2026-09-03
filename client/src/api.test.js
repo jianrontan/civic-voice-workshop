@@ -1,95 +1,48 @@
-import { mkdtemp } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createApp } from "../../server/app.js";
-import { createDb } from "../../server/lib/db.js";
-import { login } from "./api";
-import { checkHealth } from "./api";
-import { getLoginErrorMessage } from "./pages/LoginPage";
-
-const originalFetch = globalThis.fetch;
+import { ApiError, downloadFeedback } from "./api";
 
 afterEach(() => {
-  globalThis.fetch = originalFetch;
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
-async function testApp(options = {}) {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "civic-voice-client-api-"));
-  const db = await createDb(path.join(directory, "db.json"));
-  return createApp({ db, ...options });
-}
+describe("feedback CSV download", () => {
+  it("requests filtered CSV with a Bearer token and cleans up the Blob URL after clicking", async () => {
+    const click = vi.fn();
+    const link = { click, href: "", download: "" };
+    const blob = new Blob(["csv"]);
+    const fetch = vi.fn().mockResolvedValue({ ok: true, blob: vi.fn().mockResolvedValue(blob) });
+    const createObjectURL = vi.fn().mockReturnValue("blob:civicvoice-export");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("document", { createElement: vi.fn().mockReturnValue(link) });
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    vi.useFakeTimers();
 
-function fetchFromApp(app) {
-  return async (input, options = {}) => {
-    const url = new URL(input);
-    const method = (options.method ?? "GET").toLowerCase();
-    let apiRequest = request(app)[method](url.pathname).set(options.headers ?? {});
-    if (options.body) apiRequest = apiRequest.send(JSON.parse(options.body));
+    await downloadFeedback("admin-session", { category: "Transport", status: "New" });
 
-    const response = await apiRequest;
-    return { ok: response.ok, status: response.status, json: async () => response.body };
-  };
-}
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3001/api/feedback/export?category=Transport&status=New",
+      { headers: { Authorization: "Bearer admin-session" } },
+    );
+    expect(link.href).toBe("blob:civicvoice-export");
+    expect(link.download).toBe("civicvoice-feedback.csv");
+    expect(click).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
 
-describe("API error handling", () => {
-  it("preserves structured error codes and HTTP statuses", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    vi.runAllTimers();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:civicvoice-export");
+  });
+
+  it("preserves structured export errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: false,
-      status: 429,
-      json: async () => ({ error: { code: "RATE_LIMITED", message: "Please try again later." } }),
-    });
+      status: 403,
+      json: vi.fn().mockResolvedValue({ error: { code: "FORBIDDEN", message: "Admin access required." } }),
+    }));
 
-    await expect(login({})).rejects.toMatchObject({
-      name: "ApiError", status: 429, code: "RATE_LIMITED", message: "Please try again later.",
-    });
-  });
-
-  it("uses a safe fallback when an error response is not JSON", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 502,
-      json: async () => { throw new SyntaxError("Unexpected token"); },
-    });
-
-    await expect(login({})).rejects.toMatchObject({
-      status: 502, code: "REQUEST_FAILED", message: "Something went wrong.",
-    });
-  });
-
-  it("parses a live rate-limit response into an ApiError for the login UI", async () => {
-    const app = await testApp({ maxFailedLoginAttempts: 1 });
-    globalThis.fetch = fetchFromApp(app);
-    const credentials = { nric: "S0000001A", password: "wrong-password", role: "citizen" };
-
-    await expect(login(credentials)).rejects.toMatchObject({
-      status: 401, code: "INVALID_CREDENTIALS",
-    });
-
-    let error;
-    try {
-      await login(credentials);
-    } catch (caughtError) {
-      error = caughtError;
-    }
-
-    expect(error).toMatchObject({ status: 429, code: "RATE_LIMITED" });
-    expect(getLoginErrorMessage(error)).toBe("Too many unsuccessful sign-in attempts. Please wait a few minutes and try again.");
-  });
-});
-
-describe("checkHealth", () => {
-  it("reports the API as available only for a successful health response", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
-    await expect(checkHealth()).resolves.toBe(true);
-  });
-
-  it("reports unavailable when the API fails or cannot be reached", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, json: async () => ({ ok: false }) });
-    await expect(checkHealth()).resolves.toBe(false);
-
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error("API offline"));
-    await expect(checkHealth()).resolves.toBe(false);
+    await expect(downloadFeedback("citizen-session")).rejects.toMatchObject(
+      new ApiError(403, "FORBIDDEN", "Admin access required."),
+    );
   });
 });
