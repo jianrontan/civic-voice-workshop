@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   CitizenPage,
+  FEEDBACK_CATEGORIES,
   FEEDBACK_CHARACTER_LIMIT,
   isBlankFeedback,
   limitFeedbackMessage,
@@ -33,5 +34,13 @@ describe("citizen feedback character limit", () => {
 
     expect(markup).toContain(`maxlength="${FEEDBACK_CHARACTER_LIMIT}"`);
     expect(markup).toContain(`0/${FEEDBACK_CHARACTER_LIMIT} characters`);
+  });
+
+  it("renders each supported feedback category", () => {
+    const markup = renderToStaticMarkup(
+      createElement(CitizenPage, { user: { nric: "S0000001A", name: "Aisha Lim" } }),
+    );
+
+    FEEDBACK_CATEGORIES.forEach((category) => expect(markup).toContain(`>${category}</option>`));
   });
 });

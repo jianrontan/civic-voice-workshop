@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { createApp } from "./app.js";
+import { createApp, FEEDBACK_CATEGORIES } from "./app.js";
 import { createDb } from "./lib/db.js";
 
 async function testApp() {
@@ -28,19 +28,33 @@ describe("CivicVoice baseline API", () => {
     expect(response.body.user.role).toBe("citizen");
   });
 
-  it("accepts feedback", async () => {
+  it.each(FEEDBACK_CATEGORIES)("accepts and stores the %s category", async (category) => {
     const app = await testApp();
     const response = await request(app).post("/api/feedback").send({
-      nric: "S0000001A", name: "Aisha Rahman", message: "Please add more benches.",
+      nric: "S0000001A", name: "Aisha Rahman", message: "Please add more benches.", category,
     });
     expect(response.status).toBe(201);
     expect(response.body.feedback.message).toBe("Please add more benches.");
+    expect(response.body.feedback.category).toBe(category);
+
+    const inbox = await request(app).get("/api/feedback").set("x-user-role", "admin");
+    expect(inbox.body.feedback[0].category).toBe(category);
+  });
+
+  it("rejects unsupported feedback categories", async () => {
+    const app = await testApp();
+    const response = await request(app).post("/api/feedback").send({
+      nric: "S0000001A", name: "Aisha Rahman", message: "Please add more benches.", category: "General",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/valid feedback category/i);
   });
 
   it.each(["   ", "\n\t"]) ("rejects whitespace-only feedback", async (message) => {
     const app = await testApp();
     const response = await request(app).post("/api/feedback").send({
-      nric: "S0000001A", name: "Aisha Rahman", message,
+      nric: "S0000001A", name: "Aisha Rahman", message, category: "Estate",
     });
 
     expect(response.status).toBe(400);
