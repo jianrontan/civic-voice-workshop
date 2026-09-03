@@ -26,6 +26,7 @@ export async function createApp(options = {}) {
   const loginRateLimitWindowMs = options.loginRateLimitWindowMs ?? LOGIN_RATE_LIMIT_WINDOW_MS;
   const maxLoginAttemptEntries = options.maxLoginAttemptEntries ?? MAX_LOGIN_ATTEMPT_ENTRIES;
   const now = options.now ?? Date.now;
+  const sessions = new Map();
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -46,8 +47,8 @@ export async function createApp(options = {}) {
     if (user) {
       failedLoginAttempts.delete(attemptKey);
 
-      // Workshop baseline only: this is deliberately not a production session.
-      const token = Buffer.from(`${user.nric}:${user.role}`).toString("base64");
+      const token = crypto.randomBytes(32).toString("hex");
+      sessions.set(token, { nric: user.nric, role: user.role });
       return res.json({ token, user: { nric: user.nric, name: user.name, role: user.role } });
     }
 
@@ -74,10 +75,16 @@ export async function createApp(options = {}) {
     return sendError(res, 401, "INVALID_CREDENTIALS", "Invalid NRIC, password, or sign-in mode.");
   });
 
-  app.get("/api/feedback", (req, res) => {
-    if (req.header("x-user-role") !== "admin") {
+  function requireAdminSession(req, res, next) {
+    const token = req.header("authorization")?.match(/^Bearer (.+)$/)?.[1];
+    const session = token && sessions.get(token);
+    if (session?.role !== "admin") {
       return sendError(res, 403, "FORBIDDEN", "Admin access required.");
     }
+    next();
+  }
+
+  app.get("/api/feedback", requireAdminSession, (_req, res) => {
     return res.json({ feedback: db.data.feedback });
   });
 

@@ -158,7 +158,7 @@ describe("CivicVoice baseline API", () => {
     expect(response.body.feedback.message).toBe("<b></b>");
   });
 
-  it("blocks the feedback list without the admin role header", async () => {
+  it("blocks the feedback list without an admin session", async () => {
     const app = await testApp();
     const response = await request(app).get("/api/feedback");
     expect(response.status).toBe(403);
@@ -209,5 +209,33 @@ describe("CivicVoice baseline API", () => {
     });
     expect(response.status).toBe(500);
     expect(response.body.error).toEqual({ code: "INTERNAL_ERROR", message: "Something went wrong." });
+  });
+
+  it("does not let a citizen read the inbox by changing the role header", async () => {
+    const app = await testApp();
+    const login = await request(app).post("/api/login").send({
+      nric: "S0000001A", password: "citizen123", role: "citizen",
+    });
+
+    const response = await request(app)
+      .get("/api/feedback")
+      .set("Authorization", `Bearer ${login.body.token}`)
+      .set("x-user-role", "admin");
+
+    expect(response.status).toBe(403);
+  });
+
+  it("allows the inbox only with a server-issued admin session", async () => {
+    const app = await testApp();
+    const login = await request(app).post("/api/login").send({
+      nric: "S0000002B", password: "admin123", role: "admin",
+    });
+
+    const response = await request(app)
+      .get("/api/feedback")
+      .set("Authorization", `Bearer ${login.body.token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.feedback).toBeInstanceOf(Array);
   });
 });

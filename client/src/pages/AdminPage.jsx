@@ -5,13 +5,13 @@ function FeedbackText({ children }) {
   return <p>{children}</p>;
 }
 
-export function AdminPage({ user }) {
+export function AdminPage({ session }) {
   const [feedback, setFeedback] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    getFeedback(user).then((response) => setFeedback(response.feedback)).catch((requestError) => setError(requestError.message));
-  }, [user]);
+    getFeedback(session.token).then((response) => setFeedback(response.feedback)).catch((requestError) => setError(requestError.message));
+  }, [session.token]);
 
   return (
     <main className="page-shell admin-shell">
