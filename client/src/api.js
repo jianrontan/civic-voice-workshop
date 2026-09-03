@@ -1,15 +1,32 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
+export class ApiError extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function api(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
     headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
     ...options,
   });
-  const body = await response.json();
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
   if (!response.ok) {
-    const error = new Error(body.error ?? "Something went wrong.");
-    error.status = response.status;
-    throw error;
+    const error = body?.error;
+    throw new ApiError(
+      response.status,
+      typeof error?.code === "string" ? error.code : "REQUEST_FAILED",
+      typeof error?.message === "string" ? error.message : "Something went wrong.",
+    );
   }
   return body;
 }
