@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { getFeedback } from "../api";
 
+function FeedbackText({ children }) {
+  return <p>{children}</p>;
+}
+
 export function AdminPage({ user }) {
   const [feedback, setFeedback] = useState([]);
   const [error, setError] = useState("");
@@ -23,7 +27,7 @@ export function AdminPage({ user }) {
           <article className="feedback-row" key={item.id}>
             <div>
               <div className="feedback-meta">{item.name} · {new Date(item.createdAt).toLocaleDateString()}</div>
-              <p>{item.message}</p>
+              <FeedbackText>{item.message}</FeedbackText>
             </div>
             <span className="status-pill">{item.status}</span>
           </article>
