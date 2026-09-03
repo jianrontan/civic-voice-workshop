@@ -4,8 +4,23 @@ import cors from "cors";
 import { createDb } from "./lib/db.js";
 import { verifyPassword } from "./lib/passwords.js";
 
+export const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+export const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+export const MAX_LOGIN_ATTEMPT_ENTRIES = 1_000;
+
+function clearExpiredLoginAttempts(attempts, currentTime) {
+  for (const [key, attempt] of attempts) {
+    if (attempt.resetAt <= currentTime) attempts.delete(key);
+  }
+}
+
 export async function createApp(options = {}) {
   const db = options.db ?? (await createDb());
+  const failedLoginAttempts = new Map();
+  const maxFailedLoginAttempts = options.maxFailedLoginAttempts ?? MAX_FAILED_LOGIN_ATTEMPTS;
+  const loginRateLimitWindowMs = options.loginRateLimitWindowMs ?? LOGIN_RATE_LIMIT_WINDOW_MS;
+  const maxLoginAttemptEntries = options.maxLoginAttemptEntries ?? MAX_LOGIN_ATTEMPT_ENTRIES;
+  const now = options.now ?? Date.now;
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -21,11 +36,34 @@ export async function createApp(options = {}) {
       && candidate.role === role
       && verifyPassword(password, candidate.passwordHash)
     ));
-    if (!user) return res.status(401).json({ error: "Invalid NRIC, password, or sign-in mode." });
+    const attemptKey = `${req.ip}:${String(nric ?? "").trim().toUpperCase()}`;
 
-    // Workshop baseline only: this is deliberately not a production session.
-    const token = Buffer.from(`${user.nric}:${user.role}`).toString("base64");
-    return res.json({ token, user: { nric: user.nric, name: user.name, role: user.role } });
+    if (user) {
+      failedLoginAttempts.delete(attemptKey);
+
+      // Workshop baseline only: this is deliberately not a production session.
+      const token = Buffer.from(`${user.nric}:${user.role}`).toString("base64");
+      return res.json({ token, user: { nric: user.nric, name: user.name, role: user.role } });
+    }
+
+    const currentTime = now();
+    clearExpiredLoginAttempts(failedLoginAttempts, currentTime);
+    const attempt = failedLoginAttempts.get(attemptKey);
+    if (attempt && attempt.resetAt > currentTime && attempt.count >= maxFailedLoginAttempts) {
+      const retryAfterSeconds = Math.ceil((attempt.resetAt - currentTime) / 1000);
+      return res.status(429).set("Retry-After", String(retryAfterSeconds)).json({
+        error: "Too many unsuccessful sign-in attempts. Please try again later.",
+      });
+    }
+
+    if (!attempt && failedLoginAttempts.size >= maxLoginAttemptEntries) {
+      failedLoginAttempts.delete(failedLoginAttempts.keys().next().value);
+    }
+    failedLoginAttempts.set(attemptKey, {
+      count: attempt && attempt.resetAt > currentTime ? attempt.count + 1 : 1,
+      resetAt: currentTime + loginRateLimitWindowMs,
+    });
+    return res.status(401).json({ error: "Invalid NRIC, password, or sign-in mode." });
   });
 
   app.get("/api/feedback", (req, res) => {
