@@ -3,6 +3,14 @@ import express from "express";
 import cors from "cors";
 import { createDb } from "./lib/db.js";
 
+function createSubmissionReference(feedback) {
+  let reference;
+  do {
+    reference = `CV-${crypto.randomInt(100000, 1000000)}`;
+  } while (feedback.some((item) => item.reference === reference));
+  return reference;
+}
+
 export async function createApp(options = {}) {
   const db = options.db ?? (await createDb());
   const app = express();
@@ -38,7 +46,7 @@ export async function createApp(options = {}) {
       return res.status(400).json({ error: "Please enter feedback that is not blank." });
     }
     const feedback = {
-      id: crypto.randomUUID(), nric, name, message, category: "General", status: "New",
+      id: crypto.randomUUID(), reference: createSubmissionReference(db.data.feedback), nric, name, message, category: "General", status: "New",
       createdAt: new Date().toISOString(),
     };
     db.data.feedback.unshift(feedback);
