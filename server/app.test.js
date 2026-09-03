@@ -61,6 +61,9 @@ describe("CivicVoice baseline API", () => {
       nric: "S0000001A", password: "wrong-password", role: "citizen",
     });
     expect(response.status).toBe(401);
+    expect(response.body.error).toEqual({
+      code: "INVALID_CREDENTIALS", message: "Invalid NRIC, password, or sign-in mode.",
+    });
   });
 
   it("rate-limits repeated failed sign-ins without blocking a valid sign-in", async () => {
@@ -73,7 +76,9 @@ describe("CivicVoice baseline API", () => {
 
     expect(limited.status).toBe(429);
     expect(limited.headers["retry-after"]).toBeDefined();
-    expect(limited.body.error).toMatch(/too many unsuccessful/i);
+    expect(limited.body.error).toEqual({
+      code: "RATE_LIMITED", message: "Too many unsuccessful sign-in attempts. Please try again later.",
+    });
 
     const successfulLogin = await request(app).post("/api/login").send({
       nric: "S0000001A", password: "citizen123", role: "citizen",
@@ -126,7 +131,9 @@ describe("CivicVoice baseline API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toMatch(/not blank/);
+    expect(response.body.error).toEqual({
+      code: "VALIDATION_ERROR", message: "Please enter feedback that is not blank.",
+    });
   });
 
   it("preserves civic feedback containing angle brackets", async () => {
@@ -155,5 +162,52 @@ describe("CivicVoice baseline API", () => {
     const app = await testApp();
     const response = await request(app).get("/api/feedback");
     expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("returns structured validation and unknown-route errors", async () => {
+    const app = await testApp();
+    const validationResponse = await request(app).post("/api/feedback").send({});
+    expect(validationResponse.status).toBe(400);
+    expect(validationResponse.body.error.code).toBe("VALIDATION_ERROR");
+
+    const missingRouteResponse = await request(app).get("/api/missing");
+    expect(missingRouteResponse.status).toBe(404);
+    expect(missingRouteResponse.body.error).toEqual({
+      code: "NOT_FOUND", message: "No route matches GET /api/missing.",
+    });
+  });
+
+  it("returns structured errors for malformed and oversized JSON", async () => {
+    const app = await testApp();
+    const malformedResponse = await request(app)
+      .post("/api/feedback")
+      .set("Content-Type", "application/json")
+      .send('{"message":');
+    expect(malformedResponse.status).toBe(400);
+    expect(malformedResponse.body.error).toEqual({
+      code: "MALFORMED_JSON", message: "Request body must contain valid JSON.",
+    });
+
+    const oversizedResponse = await request(app)
+      .post("/api/feedback")
+      .set("Content-Type", "application/json")
+      .send(`"${"x".repeat(102_401)}"`);
+    expect(oversizedResponse.status).toBe(413);
+    expect(oversizedResponse.body.error).toEqual({
+      code: "PAYLOAD_TOO_LARGE", message: "Request body is too large.",
+    });
+  });
+
+  it("returns a structured error for unexpected server failures", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "civic-voice-"));
+    const db = await createDb(path.join(directory, "db.json"));
+    db.write = async () => { throw new Error("Simulated database failure"); };
+    const app = await createApp({ db });
+    const response = await request(app).post("/api/feedback").send({
+      nric: "S0000001A", name: "Aisha Rahman", message: "Please add more benches.",
+    });
+    expect(response.status).toBe(500);
+    expect(response.body.error).toEqual({ code: "INTERNAL_ERROR", message: "Something went wrong." });
   });
 });

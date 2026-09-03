@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { createDb } from "./lib/db.js";
 import { verifyPassword } from "./lib/passwords.js";
+import { sendError } from "./lib/errors.js";
 
 export const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 export const MAX_FAILED_LOGIN_ATTEMPTS = 5;
@@ -55,9 +56,12 @@ export async function createApp(options = {}) {
     const attempt = failedLoginAttempts.get(attemptKey);
     if (attempt && attempt.resetAt > currentTime && attempt.count >= maxFailedLoginAttempts) {
       const retryAfterSeconds = Math.ceil((attempt.resetAt - currentTime) / 1000);
-      return res.status(429).set("Retry-After", String(retryAfterSeconds)).json({
-        error: "Too many unsuccessful sign-in attempts. Please try again later.",
-      });
+      return sendError(
+        res.set("Retry-After", String(retryAfterSeconds)),
+        429,
+        "RATE_LIMITED",
+        "Too many unsuccessful sign-in attempts. Please try again later.",
+      );
     }
 
     if (!attempt && failedLoginAttempts.size >= maxLoginAttemptEntries) {
@@ -67,28 +71,45 @@ export async function createApp(options = {}) {
       count: attempt && attempt.resetAt > currentTime ? attempt.count + 1 : 1,
       resetAt: currentTime + loginRateLimitWindowMs,
     });
-    return res.status(401).json({ error: "Invalid NRIC, password, or sign-in mode." });
+    return sendError(res, 401, "INVALID_CREDENTIALS", "Invalid NRIC, password, or sign-in mode.");
   });
 
   app.get("/api/feedback", (req, res) => {
     if (req.header("x-user-role") !== "admin") {
-      return res.status(403).json({ error: "Admin access required." });
+      return sendError(res, 403, "FORBIDDEN", "Admin access required.");
     }
     return res.json({ feedback: db.data.feedback });
   });
 
-  app.post("/api/feedback", async (req, res) => {
+  app.post("/api/feedback", async (req, res, next) => {
     const { nric, name, message } = req.body ?? {};
     if (typeof message !== "string" || message.trim().length === 0) {
-      return res.status(400).json({ error: "Please enter feedback that is not blank." });
+      return sendError(res, 400, "VALIDATION_ERROR", "Please enter feedback that is not blank.");
     }
     const feedback = {
       id: crypto.randomUUID(), nric, name: normalizeFeedbackText(name), message: normalizeFeedbackText(message), category: "General", status: "New",
       createdAt: new Date().toISOString(),
     };
     db.data.feedback.unshift(feedback);
-    await db.write();
+    try {
+      await db.write();
+    } catch (error) {
+      return next(error);
+    }
     return res.status(201).json({ feedback });
+  });
+
+  app.use((req, res) => sendError(res, 404, "NOT_FOUND", `No route matches ${req.method} ${req.path}.`));
+
+  app.use((error, _req, res, _next) => {
+    if (res.headersSent) return _next(error);
+    if (error.type === "entity.parse.failed") {
+      return sendError(res, 400, "MALFORMED_JSON", "Request body must contain valid JSON.");
+    }
+    if (error.type === "entity.too.large") {
+      return sendError(res, 413, "PAYLOAD_TOO_LARGE", "Request body is too large.");
+    }
+    return sendError(res, 500, "INTERNAL_ERROR", "Something went wrong.");
   });
 
   return app;
