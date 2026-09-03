@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CitizenPage, FEEDBACK_CHARACTER_LIMIT, limitFeedbackMessage } from "./CitizenPage";
+import {
+  CitizenPage,
+  FEEDBACK_CHARACTER_LIMIT,
+  isBlankFeedback,
+  limitFeedbackMessage,
+} from "./CitizenPage";
 
 describe("citizen feedback character limit", () => {
   it("keeps feedback at or below 500 characters unchanged", () => {
@@ -14,6 +19,11 @@ describe("citizen feedback character limit", () => {
     const message = "a".repeat(FEEDBACK_CHARACTER_LIMIT + 1);
 
     expect(limitFeedbackMessage(message)).toHaveLength(FEEDBACK_CHARACTER_LIMIT);
+  });
+
+  it("identifies blank and whitespace-only feedback", () => {
+    expect(isBlankFeedback("   \n\t ")).toBe(true);
+    expect(isBlankFeedback("More sheltered seating near the playground.")).toBe(false);
   });
 
   it("renders the limit and current character count", () => {

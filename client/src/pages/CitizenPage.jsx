@@ -7,6 +7,10 @@ export function limitFeedbackMessage(message) {
   return message.slice(0, FEEDBACK_CHARACTER_LIMIT);
 }
 
+export function isBlankFeedback(message) {
+  return message.trim().length === 0;
+}
+
 export function CitizenPage({ user }) {
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -15,6 +19,10 @@ export function CitizenPage({ user }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    if (isBlankFeedback(message)) {
+      setError("Please enter feedback that is not blank.");
+      return;
+    }
     if (message.length > FEEDBACK_CHARACTER_LIMIT) {
       setError(`Feedback must be ${FEEDBACK_CHARACTER_LIMIT} characters or fewer.`);
       return;
