@@ -3,12 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { createApp } from "./app.js";
+import { createApp, feedbackToCsv } from "./app.js";
 import { createDb } from "./lib/db.js";
 
-async function testApp(options = {}) {
+async function testApp({ feedback, ...options } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "civic-voice-"));
   const db = await createDb(path.join(directory, "db.json"));
+  if (feedback) db.data.feedback = feedback;
   return createApp({ db, ...options });
 }
 
@@ -238,4 +239,58 @@ describe("CivicVoice baseline API", () => {
     expect(response.status).toBe(200);
     expect(response.body.feedback).toBeInstanceOf(Array);
   });
+
+  it("exports only visible filtered feedback as safely quoted CSV", async () => {
+    const app = await testApp({
+      feedback: [
+        {
+          id: "fb-transport", name: "Aisha \"Sunny\" Rahman", category: "Transport", status: "New",
+          createdAt: "2026-09-03T08:00:00.000Z", message: "=SUM(1,1)\nThank you.",
+        },
+        {
+          id: "fb-estate", name: "Daniel Tan", category: "Estate", status: "Closed",
+          createdAt: "2026-09-02T08:00:00.000Z", message: "Lift is working well.",
+        },
+      ],
+    });
+
+    const login = await request(app).post("/api/login").send({
+      nric: "S0000002B", password: "admin123", role: "admin",
+    });
+    const response = await request(app)
+      .get("/api/feedback/export?category=Transport&status=New")
+      .set("Authorization", `Bearer ${login.body.token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toMatch(/^text\/csv/);
+    expect(response.headers["content-disposition"]).toMatch(/civicvoice-feedback\.csv/);
+    expect(response.text).toContain("\"Aisha \"\"Sunny\"\" Rahman\"");
+    expect(response.text).toContain("\"'=SUM(1,1)\nThank you.\"");
+    expect(response.text).not.toContain("fb-estate");
+  });
+
+  it("blocks CSV export without an admin session", async () => {
+    const app = await testApp();
+    const noSession = await request(app).get("/api/feedback/export");
+    expect(noSession.status).toBe(403);
+    expect(noSession.body.error.code).toBe("FORBIDDEN");
+
+    const citizenLogin = await request(app).post("/api/login").send({
+      nric: "S0000001A", password: "citizen123", role: "citizen",
+    });
+    const citizenExport = await request(app)
+      .get("/api/feedback/export")
+      .set("Authorization", `Bearer ${citizenLogin.body.token}`);
+    expect(citizenExport.status).toBe(403);
+    expect(citizenExport.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it.each(["=1+1", "+1+1", "-1+1", "@SUM(A1)", "\t=1+1", "\r=1+1"])(
+    "neutralizes spreadsheet formula prefixes in CSV cells: %j",
+    (message) => {
+      const csv = feedbackToCsv([{ id: "fb-safe", message }]);
+
+      expect(csv).toContain(`"'${message}"`);
+    },
+  );
 });
