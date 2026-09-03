@@ -6,9 +6,10 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { createDb } from "./lib/db.js";
 
-async function testApp() {
+async function testApp({ feedback } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "civic-voice-"));
   const db = await createDb(path.join(directory, "db.json"));
+  if (feedback) db.data.feedback = feedback;
   return createApp({ db });
 }
 
@@ -35,6 +36,21 @@ describe("CivicVoice baseline API", () => {
     });
     expect(response.status).toBe(201);
     expect(response.body.feedback.message).toBe("Please add more benches.");
+  });
+
+  it("returns feedback newest first when stored data is out of order", async () => {
+    const app = await testApp({
+      feedback: [
+        { id: "older", createdAt: "2026-08-01T08:00:00.000Z" },
+        { id: "newest", createdAt: "2026-08-03T08:00:00.000Z" },
+        { id: "middle", createdAt: "2026-08-02T08:00:00.000Z" },
+      ],
+    });
+
+    const response = await request(app).get("/api/feedback").set("x-user-role", "admin");
+
+    expect(response.status).toBe(200);
+    expect(response.body.feedback.map((item) => item.id)).toEqual(["newest", "middle", "older"]);
   });
 
   it.each(["   ", "\n\t"]) ("rejects whitespace-only feedback", async (message) => {
