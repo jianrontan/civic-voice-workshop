@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import request from "supertest";
@@ -26,6 +26,41 @@ describe("CivicVoice baseline API", () => {
     });
     expect(response.status).toBe(200);
     expect(response.body.user.role).toBe("citizen");
+  });
+
+  it("stores only password hashes while retaining the workshop credentials", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "civic-voice-"));
+    const db = await createDb(path.join(directory, "db.json"));
+    const app = await createApp({ db });
+    const response = await request(app).post("/api/login").send({
+      nric: "S0000002B", password: "admin123", role: "admin",
+    });
+    expect(response.status).toBe(200);
+    for (const user of db.data.users) {
+      expect(user).not.toHaveProperty("password");
+      expect(user.passwordHash).toMatch(/^pbkdf2\$sha512\$/);
+    }
+  });
+
+  it("migrates legacy persisted passwords to hashes", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "civic-voice-"));
+    const databasePath = path.join(directory, "db.json");
+    await writeFile(databasePath, JSON.stringify({
+      users: [{ nric: "S0000003C", password: "legacy-demo-password", name: "Maya Lim", role: "citizen" }],
+      feedback: [],
+    }));
+
+    const db = await createDb(databasePath);
+    expect(db.data.users[0]).not.toHaveProperty("password");
+    expect(db.data.users[0].passwordHash).toMatch(/^pbkdf2\$sha512\$/);
+  });
+
+  it("rejects an incorrect password", async () => {
+    const app = await testApp();
+    const response = await request(app).post("/api/login").send({
+      nric: "S0000001A", password: "wrong-password", role: "citizen",
+    });
+    expect(response.status).toBe(401);
   });
 
   it("accepts feedback", async () => {
