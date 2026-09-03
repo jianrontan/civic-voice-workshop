@@ -9,7 +9,7 @@ export const seedData = {
       nric: "S0000001A",
       name: "Aisha Rahman",
       message: "The new sheltered walkway near the library is helpful, but the lights turn off too early.",
-      category: "General",
+      category: "Estate",
       status: "New",
       createdAt: "2026-08-29T09:14:00.000Z",
     },

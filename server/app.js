@@ -3,6 +3,8 @@ import express from "express";
 import cors from "cors";
 import { createDb } from "./lib/db.js";
 
+export const FEEDBACK_CATEGORIES = ["Estate", "Transport", "Environment", "Other"];
+
 export async function createApp(options = {}) {
   const db = options.db ?? (await createDb());
   const app = express();
@@ -33,12 +35,15 @@ export async function createApp(options = {}) {
   });
 
   app.post("/api/feedback", async (req, res) => {
-    const { nric, name, message } = req.body ?? {};
+    const { nric, name, message, category } = req.body ?? {};
     if (typeof message !== "string" || message.trim().length === 0) {
       return res.status(400).json({ error: "Please enter feedback that is not blank." });
     }
+    if (!FEEDBACK_CATEGORIES.includes(category)) {
+      return res.status(400).json({ error: "Please choose a valid feedback category." });
+    }
     const feedback = {
-      id: crypto.randomUUID(), nric, name, message, category: "General", status: "New",
+      id: crypto.randomUUID(), nric, name, message, category, status: "New",
       createdAt: new Date().toISOString(),
     };
     db.data.feedback.unshift(feedback);
