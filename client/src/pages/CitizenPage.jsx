@@ -11,9 +11,14 @@ export function isBlankFeedback(message) {
   return message.trim().length === 0;
 }
 
+export function SubmissionConfirmation({ reference }) {
+  return <div className="success-banner">Thank you. Your feedback has been received. Your reference is {reference}.</div>;
+}
+
 export function CitizenPage({ user }) {
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submissionReference, setSubmissionReference] = useState("");
   const [error, setError] = useState("");
 
   async function handleSubmit(event) {
@@ -29,7 +34,8 @@ export function CitizenPage({ user }) {
     }
 
     try {
-      await submitFeedback({ nric: user.nric, name: user.name, message });
+      const response = await submitFeedback({ nric: user.nric, name: user.name, message });
+      setSubmissionReference(response.feedback.reference);
       setSubmitted(true);
       setMessage("");
     } catch (requestError) {
@@ -45,7 +51,7 @@ export function CitizenPage({ user }) {
         <p>Tell us about an issue, an idea, or a positive experience in your community.</p>
       </div>
       <section className="form-card">
-        {submitted && <div className="success-banner">Thank you. Your feedback has been received.</div>}
+        {submitted && <SubmissionConfirmation reference={submissionReference} />}
         <form onSubmit={handleSubmit}>
           <label>Your feedback
             <textarea

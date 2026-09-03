@@ -35,6 +35,8 @@ describe("CivicVoice baseline API", () => {
     });
     expect(response.status).toBe(201);
     expect(response.body.feedback.message).toBe("Please add more benches.");
+    expect(response.body.feedback.reference).toMatch(/^CV-\d{6}$/);
+    expect(response.body.feedback.reference).not.toBe(response.body.feedback.id);
   });
 
   it.each(["   ", "\n\t"]) ("rejects whitespace-only feedback", async (message) => {

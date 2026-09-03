@@ -6,6 +6,7 @@ import {
   FEEDBACK_CHARACTER_LIMIT,
   isBlankFeedback,
   limitFeedbackMessage,
+  SubmissionConfirmation,
 } from "./CitizenPage";
 
 describe("citizen feedback character limit", () => {
@@ -33,5 +34,12 @@ describe("citizen feedback character limit", () => {
 
     expect(markup).toContain(`maxlength="${FEEDBACK_CHARACTER_LIMIT}"`);
     expect(markup).toContain(`0/${FEEDBACK_CHARACTER_LIMIT} characters`);
+  });
+
+  it("shows the short submission reference in the confirmation", () => {
+    const markup = renderToStaticMarkup(createElement(SubmissionConfirmation, { reference: "CV-123456" }));
+
+    expect(markup).toContain("CV-123456");
+    expect(markup).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
   });
 });
