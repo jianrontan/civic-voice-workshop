@@ -129,6 +129,28 @@ describe("CivicVoice baseline API", () => {
     expect(response.body.error).toMatch(/not blank/);
   });
 
+  it("preserves civic feedback containing angle brackets", async () => {
+    const app = await testApp();
+    const response = await request(app).post("/api/feedback").send({
+      nric: "S0000001A",
+      name: "Aisha Rahman",
+      message: "Keep speeds < 40 km/h near school > at all times",
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.feedback.message).toBe("Keep speeds < 40 km/h near school > at all times");
+  });
+
+  it("keeps HTML-like text nonblank while removing control characters", async () => {
+    const app = await testApp();
+    const response = await request(app).post("/api/feedback").send({
+      nric: "S0000001A", name: "Aisha Rahman", message: "<b></b>\u0000",
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.feedback.message).toBe("<b></b>");
+  });
+
   it("blocks the feedback list without the admin role header", async () => {
     const app = await testApp();
     const response = await request(app).get("/api/feedback");

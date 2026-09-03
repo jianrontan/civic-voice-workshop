@@ -14,6 +14,10 @@ function clearExpiredLoginAttempts(attempts, currentTime) {
   }
 }
 
+export function normalizeFeedbackText(value) {
+  return typeof value === "string" ? value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "") : value;
+}
+
 export async function createApp(options = {}) {
   const db = options.db ?? (await createDb());
   const failedLoginAttempts = new Map();
@@ -79,7 +83,7 @@ export async function createApp(options = {}) {
       return res.status(400).json({ error: "Please enter feedback that is not blank." });
     }
     const feedback = {
-      id: crypto.randomUUID(), nric, name, message, category: "General", status: "New",
+      id: crypto.randomUUID(), nric, name: normalizeFeedbackText(name), message: normalizeFeedbackText(message), category: "General", status: "New",
       createdAt: new Date().toISOString(),
     };
     db.data.feedback.unshift(feedback);
